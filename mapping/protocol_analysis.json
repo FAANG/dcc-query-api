@@ -1,0 +1,45 @@
+{
+  "dynamic": "strict",
+  "properties": {
+    "analysisType": {
+      "type": "keyword"
+    },
+    "universityName": {
+      "type": "keyword"
+    },
+    "protocolDate": {
+      "type": "keyword"
+    },
+    "protocolName": {
+      "type": "keyword"
+    },
+    "key": {
+      "type": "keyword"
+    },
+    "url": {
+      "type": "keyword"
+    },
+    "analysis": {
+      "properties": {
+        "accession": {
+          "type": "keyword"
+        },
+        "analysisType": {
+          "type": "keyword"
+        },
+        "assayType": {
+          "type": "keyword"
+        },
+        "dataset": {
+          "type": "keyword"
+        },
+        "organism": {
+          "type": "keyword"
+        },
+        "title": {
+          "type": "keyword"
+        }
+      }
+    }
+  }
+}

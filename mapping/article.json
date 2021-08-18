@@ -1,0 +1,57 @@
+{
+  "dynamic": "strict",
+  "properties": {
+    "pmcId": {
+      "type": "keyword"
+    },
+    "pubmedId": {
+      "type": "keyword"
+    },
+    "doi": {
+      "type": "keyword"
+    },
+    "title": {
+      "type": "keyword"
+    },
+    "authorString": {
+      "type": "keyword"
+    },
+    "journal": {
+      "type": "keyword"
+    },
+    "issue": {
+      "type": "keyword"
+    },
+    "volume": {
+      "type": "keyword"
+    },
+    "year": {
+      "type": "keyword"
+    },
+    "pages": {
+      "type": "keyword"
+    },
+    "isOpenAccess": {
+      "type": "keyword"
+    },
+    "datasetSource": {
+      "type": "keyword"
+    },
+    "relatedDatasets": {
+      "properties": {
+        "accession": {
+          "type": "keyword"
+        },
+        "standardMet": {
+          "type": "keyword"
+        },
+        "species": {
+          "type": "keyword"
+        }
+      }
+    },
+    "secondaryProject": {
+      "type": "keyword"
+    }
+  }
+}
