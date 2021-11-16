@@ -6,11 +6,15 @@ from app.utils import generate_request_body, Index, \
     parse_fields, serialize_record, generate_csv_file, DEFAULT_COLUMNS
 import json
 from fastapi.responses import FileResponse
+from elasticsearch import RequestsHttpConnection
+import os
 
 app = FastAPI()
-NODE1 = config('NODE1')
-NODE2 = config('NODE2')
-es = Elasticsearch([NODE1, NODE2])
+NODE = config('NODE')
+ES_USER = os.getenv('ES_USER')
+ES_PASSWORD = os.getenv('ES_PASSWORD')
+es = Elasticsearch([NODE], connection_class=RequestsHttpConnection, \
+    http_auth=(ES_USER, ES_PASSWORD), use_ssl=True, verify_certs=False)
 
 @app.get("/search")
 def search_mulitple_indices(
