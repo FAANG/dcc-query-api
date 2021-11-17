@@ -38,7 +38,7 @@ def search_mulitple_indices(
                 organisms=organism.text'),
     q: Optional[str] = None):
     data = es.search(index=indices, _source=_source,\
-        size=size, from_=from_, sort=sort, q=q,\
+        size=size, from_=from_, sort=sort, q=q, track_total_hits=True,\
         body=generate_request_body(filters, aggs))
     return data
 
