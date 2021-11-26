@@ -182,3 +182,22 @@ def generate_csv_file(records, columns):
         dict_writer = csv.DictWriter(csvfile, columns)
         dict_writer.writeheader()
         dict_writer.writerows(records)
+
+def perform_join(records1, records2, indices):
+    # sample values
+    spec = {
+        'file-specimen': ['specimen','biosampleId'],
+        'specimen-file': ['biosampleId','specimen']
+    }
+    if indices in spec:
+        combined_records = []
+        for rec1 in records1:
+            for rec2 in records2:
+                if rec1[spec[0]] == rec2[spec[1]]:
+                    rec = dict(rec1.items() + rec2.items())
+                    # key of joined record is the key of left table record
+                    # delete key of right table record
+                    del rec[spec[1]] 
+                    combined_records.append(rec)
+        return combined_records
+    return records1 + records2
