@@ -1,5 +1,6 @@
 from enum import Enum
 import csv
+import copy
 
 class Index(str, Enum):
     file = "file"
@@ -12,6 +13,7 @@ class Index(str, Enum):
     protocol_files = "protocol_files"
     protocol_samples = "protocol_samples"
     protocol_analysis = "protocol_analysis"
+    file_specimen = "file-specimen"
 
 DEFAULT_COLUMNS = {
         'file': [
@@ -193,11 +195,24 @@ def perform_join(records1, records2, indices):
         combined_records = []
         for rec1 in records1:
             for rec2 in records2:
-                if rec1[spec[0]] == rec2[spec[1]]:
-                    rec = dict(rec1.items() + rec2.items())
-                    # key of joined record is the key of left table record
-                    # delete key of right table record
-                    del rec[spec[1]] 
+                if rec1[spec[indices][0]] == rec2[spec[indices][1]]:
+                    rec = copy.deepcopy(rec1)
+                    for key in rec2.keys():
+                        if key != 'index' and key != spec[indices][1]:
+                            rec[key] = rec2[key]
                     combined_records.append(rec)
         return combined_records
     return records1 + records2
+
+def process(record):
+    rec = record['_source']
+    rec['index'] = record['_index']
+    return rec
+
+def remove_nested_fields(record, source):
+    rec = {}
+    source = source.split(',')
+    for key in record.keys():
+        if key in source or key == 'index':
+            rec[key] = record[key]
+    return rec
