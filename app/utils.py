@@ -14,9 +14,11 @@ class Index(str, Enum):
     protocol_samples = "protocol_samples"
     protocol_analysis = "protocol_analysis"
     file_specimen = "file-specimen"
+    specimen_file = "specimen-file"
 
 DEFAULT_COLUMNS = {
         'file': [
+            'filename',
             'study.accession',
             'experiment.accession',
             'species.text',

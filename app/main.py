@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Query
-from typing import Optional, List
-from elasticsearch import Elasticsearch, RequestsHttpConnection
+from fastapi import FastAPI, Query, HTTPException
+from typing import Optional, List, Text
+from elasticsearch import Elasticsearch, RequestsHttpConnection, exceptions
 from decouple import config
 from app.utils import generate_request_body, Index, \
     parse_fields, serialize_record, generate_csv_file, \
@@ -55,10 +55,7 @@ def search_mulitple_indices(
 def fetch_all_records(
     index1: Index = '',
     index2: Index = '',
-    source1: Optional[str] = Query(None,
-        description='Provide comma-separated fields to fetch. \
-            For example, organism.text,sex.text'),
-    source2: Optional[str] = Query(None,
+    _source: Optional[str] = Query(None,
         description='Provide comma-separated fields to fetch. \
             For example, organism.text,sex.text'),
     size: Optional[int] = 10, \
@@ -99,18 +96,21 @@ def fetch_all_records(
     # data = perform_join(tables[index1], tables[index2], indices)
     # count = len(data)
     indices = index1 + '-' + index2
-    source = source1 + ',' + source2
-    data = es.search(index=indices, _source=source,\
-        size=size, from_=from_, sort=sort, q=q, track_total_hits=True,\
-        body=generate_request_body(filters, aggs))
-    count = data['hits']['total']['value']
-    records = list(map(lambda rec: process(rec), data['hits']['hits']))
-    records = list(map(lambda rec: serialize_record(rec, rec, []), records))
-    records = list(map(lambda rec: remove_nested_fields(rec, source), records))
-    return {
-        'data': records,
-        'count': count
-    }
+    try:
+        data = es.search(index=indices, _source=_source,\
+            size=size, from_=from_, sort=sort, q=q, track_total_hits=True,\
+            body=generate_request_body(filters, aggs))
+        count = data['hits']['total']['value']
+        records = list(map(lambda rec: process(rec), data['hits']['hits']))
+        records = list(map(lambda rec: serialize_record(rec, rec, []), records))
+        records = list(map(lambda rec: remove_nested_fields(rec, _source), records))
+        return {
+            'data': records,
+            'count': count
+        }
+    except exceptions.NotFoundError:
+        raise HTTPException(status_code=400, detail="Indices cannot be combined")
+
 
 @app.get("/columns")
 def get_columns_for_all_indices():
