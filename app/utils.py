@@ -14,7 +14,6 @@ class Index(str, Enum):
     protocol_samples = "protocol_samples"
     protocol_analysis = "protocol_analysis"
     file_specimen = "file-specimen"
-    specimen_file = "specimen-file"
 
 DEFAULT_COLUMNS = {
         'file': [
@@ -209,6 +208,8 @@ def perform_join(records1, records2, indices):
 def process(record):
     rec = record['_source']
     rec['index'] = record['_index']
+    if rec['index'] == 'file':
+        rec['filename'] = record['_id']
     return rec
 
 def remove_nested_fields(record, source):
