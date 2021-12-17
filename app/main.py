@@ -141,12 +141,23 @@ def download_as_CSV(
         description='Each filter condition should have the format: \
             field_name=value1,value2. For example, \
                 organism.text=Sus scrofa,Gallus gallus'),
+    aggs: Optional[List[str]] = Query([], regex=".+=.+", 
+        description='Each aggregation item should have the format: \
+            agg_name=agg_field. For example, \
+                organisms=organism.text'),
     q: Optional[str] = None):
-    SIZE = 1000000
-    data = es.search(index=indices, _source=_source, size=SIZE, sort=sort, \
-        q=q, body=generate_request_body(filters, []), track_total_hits=True)
-    records = list(map(lambda rec: rec['_source'], data['hits']['hits']))
-    records = list(map(lambda rec: serialize_record(rec, rec, []), records))
+    data = []
+    count = 0
+    while True:
+        res = es.search(index=indices, _source=_source,\
+            size=50000, from_=count, sort=sort, q=q, track_total_hits=True,\
+            body=generate_request_body(filters, aggs))
+        count += 50000
+        records = list(map(lambda rec: process(rec), res['hits']['hits']))
+        data += records
+        if count > res['hits']['total']['value']:
+            break
+    records = list(map(lambda rec: serialize_record(rec, rec, []), data))
     records = list(map(lambda rec: remove_nested_fields(rec, _source), records))
     generate_csv_file(records, _source.split(','))
     return FileResponse('data.csv', media_type='text/csv',filename='data.csv')

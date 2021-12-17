@@ -164,10 +164,11 @@ def flatten_list(items):
         result = {}
         for i in range(len(items)):
             for prop in items[i]:
-                if prop in result:
-                    result[prop] = result[prop] + ',\n' + items[i][prop]
-                else:
-                    result[prop] = items[i][prop]
+                if items[i][prop] is not None:
+                    if prop in result:
+                        result[prop] = result[prop] + ',\n' + str(items[i][prop])
+                    else:
+                        result[prop] = str(items[i][prop])
         return result
     else:
         return ',\n'.join(items)
@@ -181,9 +182,16 @@ def delete_extra_fields(record, fields):
 
 def generate_csv_file(records, columns):
     records = list(map(lambda rec: delete_extra_fields(rec, columns), records))
+    headers = {}
+    for col in columns:
+        column = col.split('.')
+        if 'text' in column:
+            column.remove('text')
+        column = ' '.join(column)
+        headers[col] = column
     with open('data.csv', 'w') as csvfile: 
         dict_writer = csv.DictWriter(csvfile, columns)
-        dict_writer.writeheader()
+        dict_writer.writerow(headers)
         dict_writer.writerows(records)
 
 def perform_join(records1, records2, indices):
