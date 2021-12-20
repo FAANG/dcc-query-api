@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Text
 from elasticsearch import Elasticsearch, RequestsHttpConnection, exceptions
 from decouple import config
@@ -10,6 +11,16 @@ from fastapi.responses import FileResponse
 import os
 
 app = FastAPI()
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 NODE = config('NODE')
 ES_USER = os.getenv('ES_USER')
 # ES_USER = config('ES_USER') 

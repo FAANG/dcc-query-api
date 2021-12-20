@@ -11,6 +11,15 @@
         }
       }
     },
+    "filename": {
+      "type": "keyword",
+      "fields": {
+        "std": {
+          "type": "text",
+          "analyzer": "standard"
+        }
+      }
+    },
     "organism": {
       "type": "keyword",
       "fields": {
