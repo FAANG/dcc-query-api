@@ -4,8 +4,8 @@ from typing import Optional, List, Text
 from elasticsearch import Elasticsearch, RequestsHttpConnection, exceptions
 from decouple import config
 from app.utils import generate_request_body, Index, \
-    parse_fields, serialize_record, generate_csv_file, \
-    perform_join, process, remove_nested_fields, DEFAULT_COLUMNS
+    parse_fields, generate_delimited_file, flatten_json, \
+    perform_join, process, DEFAULT_COLUMNS
 import json
 from fastapi.responses import FileResponse
 import os
@@ -23,11 +23,12 @@ app.add_middleware(
 
 NODE = config('NODE')
 ES_USER = os.getenv('ES_USER')
-# ES_USER = config('ES_USER') 
+# ES_USER = config('ES_USER')
 ES_PASSWORD = os.getenv('ES_PASSWORD')
 # ES_PASSWORD = config('ES_PASSWORD')
-es = Elasticsearch([NODE], connection_class=RequestsHttpConnection, \
-    http_auth=(ES_USER, ES_PASSWORD), use_ssl=True, verify_certs=False)
+es = Elasticsearch([NODE], connection_class=RequestsHttpConnection,
+                   http_auth=(ES_USER, ES_PASSWORD), use_ssl=True, verify_certs=False)
+
 
 @app.get("/search")
 def search_mulitple_indices(
@@ -35,17 +36,17 @@ def search_mulitple_indices(
     _source: Optional[str] = Query(None,
         description='Provide comma-separated fields to fetch. \
             For example, organism.text,sex.text'),
-    size: Optional[int] = 10, \
-    from_: Optional[int] = 0, \
+    size: Optional[int] = 10,
+    from_: Optional[int] = 0,
     sort: Optional[str] = Query(None,
         description='Provide fields to sort by, in the format: \
             field1:<asc|desc>,field2:<asc|desc>. For example, \
-                organism.text:asc,sex.text:desc'), \
+                organism.text:asc,sex.text:desc'),
     filters: Optional[List[str]] = Query([], regex=".+=(.+,?)+",
         description='Each filter condition should have the format: \
             field_name=value1,value2. For example, \
                 organism.text=Sus scrofa,Gallus gallus'),
-    aggs: Optional[List[str]] = Query([], regex=".+=.+", 
+    aggs: Optional[List[str]] = Query([], regex=".+=.+",
         description='Each aggregation item should have the format: \
             agg_name=agg_field. For example, \
                 organisms=organism.text'),
@@ -55,12 +56,12 @@ def search_mulitple_indices(
         body=generate_request_body(filters, aggs))
     count = data['hits']['total']['value']
     records = list(map(lambda rec: process(rec), data['hits']['hits']))
-    records = list(map(lambda rec: serialize_record(rec, rec, []), records))
-    records = list(map(lambda rec: remove_nested_fields(rec, _source), records))
+    records = list(map(lambda rec: flatten_json(rec), records))
     return {
         'data': records,
         'count': count
     }
+
 
 @app.get("/join_search")
 def fetch_all_records(
@@ -79,7 +80,7 @@ def fetch_all_records(
         description='Each filter condition should have the format: \
             field_name=value1,value2. For example, \
                 organism.text=Sus scrofa,Gallus gallus'),
-    aggs: Optional[List[str]] = Query([], regex=".+=.+", 
+    aggs: Optional[List[str]] = Query([], regex=".+=.+",
         description='Each aggregation item should have the format: \
             agg_name=agg_field. For example, \
                 organisms=organism.text'),
@@ -113,8 +114,7 @@ def fetch_all_records(
             body=generate_request_body(filters, aggs))
         count = data['hits']['total']['value']
         records = list(map(lambda rec: process(rec), data['hits']['hits']))
-        records = list(map(lambda rec: serialize_record(rec, rec, []), records))
-        records = list(map(lambda rec: remove_nested_fields(rec, _source), records))
+        records = list(map(lambda rec: flatten_json(rec), records))
         return {
             'data': records,
             'count': count
@@ -138,8 +138,9 @@ def get_columns_for_all_indices():
         }
     return res
 
+
 @app.get("/download")
-def download_as_CSV(
+def download_delimited_file(
     indices: List[Index] = Query(None),
     _source: Optional[str] = Query(None,
         description='Provide comma-separated fields to fetch. \
@@ -147,18 +148,20 @@ def download_as_CSV(
     sort: Optional[str] = Query(None,
         description='Provide fields to sort by, in the format: \
             field1:<asc|desc>,field2:<asc|desc>. For example, \
-                organism.text:asc,sex.text:desc'), \
+                organism.text:asc,sex.text:desc'),
     filters: Optional[List[str]] = Query([], regex=".+=(.+,?)+",
         description='Each filter condition should have the format: \
             field_name=value1,value2. For example, \
                 organism.text=Sus scrofa,Gallus gallus'),
-    aggs: Optional[List[str]] = Query([], regex=".+=.+", 
+    aggs: Optional[List[str]] = Query([], regex=".+=.+",
         description='Each aggregation item should have the format: \
             agg_name=agg_field. For example, \
                 organisms=organism.text'),
+    file_format: Optional[str] = Query(None),
     q: Optional[str] = None):
     data = []
     count = 0
+
     while True:
         res = es.search(index=indices, _source=_source,\
             size=50000, from_=count, sort=sort, q=q, track_total_hits=True,\
@@ -168,7 +171,15 @@ def download_as_CSV(
         data += records
         if count > res['hits']['total']['value']:
             break
-    records = list(map(lambda rec: serialize_record(rec, rec, []), data))
-    records = list(map(lambda rec: remove_nested_fields(rec, _source), records))
-    generate_csv_file(records, _source.split(','))
-    return FileResponse('data.csv', media_type='text/csv',filename='data.csv')
+    records = list(map(lambda rec: flatten_json(rec), data))
+
+    allowed_formats = {
+        'csv': ',',
+        'tsv': '\t'
+    }
+
+    delimiter = allowed_formats[file_format] if file_format in allowed_formats else allowed_formats['csv']
+    file_ext = file_format if file_format in allowed_formats else 'csv'
+
+    generate_delimited_file(records, _source.split(','), delimiter, file_ext)
+    return FileResponse(f'data.{file_ext}', media_type=f'text/{file_ext}', filename=f'data.{file_ext}')

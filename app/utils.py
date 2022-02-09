@@ -2,6 +2,7 @@ from enum import Enum
 import csv
 import copy
 
+
 class Index(str, Enum):
     file = "file"
     organism = "organism"
@@ -14,6 +15,8 @@ class Index(str, Enum):
     protocol_samples = "protocol_samples"
     protocol_analysis = "protocol_analysis"
     file_specimen = "file-specimen"
+    dataset_specimen = "dataset-specimen"
+
 
 DEFAULT_COLUMNS = {
         'file': [
@@ -30,21 +33,21 @@ DEFAULT_COLUMNS = {
         ],
         'organism': [
             'biosampleId',
-            'sex.text', 
+            'sex.text',
             'organism.text',
-            'breed.text', 
+            'breed.text',
             'standardMet',
             'paperPublished'
         ],
         'specimen': [
-            'biosampleId', 
-            'material.text', 
+            'biosampleId',
+            'material.text',
             'cellType.text',
-            'organism.sex.text',  
+            'organism.sex.text',
             'organism.organism.text',
             'organism.breed.text',
             'standardMet',
-            'paperPublished', 
+            'paperPublished',
         ],
         'dataset': [
             'accession',
@@ -96,6 +99,7 @@ DEFAULT_COLUMNS = {
         ]
     }
 
+
 def generate_request_body(filters, aggs):
     body = {}
     # generate query for filtering
@@ -126,7 +130,7 @@ def generate_request_body(filters, aggs):
         # agg_name=field to aggregate on
         key, val = agg.split('=')
         # size determines number of aggregation buckets returned
-        agg_values[key] = {"terms": {"field": val, "size": 25}} 
+        agg_values[key] = {"terms": {"field": val, "size": 25}}
         if key == 'paper_published':
             # aggregations for missing paperPublished field
             agg_values["paper_published_missing"] = {
@@ -134,6 +138,7 @@ def generate_request_body(filters, aggs):
 
     body['aggs'] = agg_values
     return body
+
 
 def parse_fields(data, mapping, properties):
     data = data['properties']
@@ -146,32 +151,35 @@ def parse_fields(data, mapping, properties):
         properties.pop()
     return mapping
 
-def serialize_record(parentRecord, currentRecord, parentProps):
-    for prop in currentRecord.copy():
-        parentProps.append(prop)
-        if type(currentRecord[prop]) is list and len(currentRecord[prop]):
-            currentRecord[prop] = flatten_list(currentRecord[prop])
-        if type(currentRecord[prop]) is dict:
-            serialize_record(parentRecord, currentRecord[prop], parentProps)
-        else:
-            serailisedProp = '.'.join(parentProps)
-            parentRecord[serailisedProp] = currentRecord[prop]
-        parentProps.pop()
-    return parentRecord
 
-def flatten_list(items):
-    if type(items[0]) is dict:
-        result = {}
-        for i in range(len(items)):
-            for prop in items[i]:
-                if items[i][prop] is not None:
-                    if prop in result:
-                        result[prop] = result[prop] + ',\n' + str(items[i][prop])
+def flatten_json(y):
+    out = {}
+
+    def flatten(x, name=''):
+        if type(x) is dict:
+            for a in x:
+                flatten(x[a], name + a + '.')
+        elif type(x) is list:
+            for a in x:
+                if type(a) is dict or type(a) is list:
+                    flatten(a, name)
+                else:
+                    k = name[:-1]
+                    if k in out:
+                        out[k] = out[k] + ",\n" + ','.join(x)
                     else:
-                        result[prop] = str(items[i][prop])
-        return result
-    else:
-        return ',\n'.join(items)
+                        out[k] = ','.join(x)
+                    return
+        else:
+            k = name[:-1]
+            if k in out:
+                out[k] = out[k] + ",\n" + x
+            else:
+                out[k] = x
+
+    flatten(y)
+    return out
+
 
 def delete_extra_fields(record, fields):
     updated_record = {}
@@ -180,7 +188,8 @@ def delete_extra_fields(record, fields):
             updated_record[prop] = record[prop]
     return updated_record
 
-def generate_csv_file(records, columns):
+
+def generate_delimited_file(records, columns, delim, file_ext):
     records = list(map(lambda rec: delete_extra_fields(rec, columns), records))
     headers = {}
     for col in columns:
@@ -189,10 +198,12 @@ def generate_csv_file(records, columns):
             column.remove('text')
         column = ' '.join(column)
         headers[col] = column
-    with open('data.csv', 'w') as csvfile: 
-        dict_writer = csv.DictWriter(csvfile, columns)
+
+    with open(f'data.{file_ext}', 'w') as f:
+        dict_writer = csv.DictWriter(f, fieldnames=columns, delimiter=delim)
         dict_writer.writerow(headers)
         dict_writer.writerows(records)
+
 
 def perform_join(records1, records2, indices):
     # sample values
@@ -213,17 +224,10 @@ def perform_join(records1, records2, indices):
         return combined_records
     return records1 + records2
 
+
 def process(record):
     rec = record['_source']
     rec['index'] = record['_index']
     if rec['index'] == 'file':
         rec['filename'] = record['_id']
-    return rec
-
-def remove_nested_fields(record, source):
-    rec = {}
-    source = source.split(',')
-    for key in record.keys():
-        if key in source or key == 'index':
-            rec[key] = record[key]
     return rec
