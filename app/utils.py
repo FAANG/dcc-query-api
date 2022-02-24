@@ -1,6 +1,7 @@
 from enum import Enum
 import csv
 import copy
+from fastapi.responses import FileResponse
 
 
 class Index(str, Enum):
@@ -15,89 +16,90 @@ class Index(str, Enum):
     protocol_samples = "protocol_samples"
     protocol_analysis = "protocol_analysis"
     file_specimen = "file-specimen"
+    file_specimen_v1 = "file-specimen-v1"
     dataset_specimen = "dataset-specimen"
 
 
 DEFAULT_COLUMNS = {
-        'file': [
-            'filename',
-            'study.accession',
-            'experiment.accession',
-            'species.text',
-            'experiment.assayType',
-            'experiment.target',
-            'specimen',
-            'run.instrument',
-            'experiment.standardMet',
-            'paperPublished'
-        ],
-        'organism': [
-            'biosampleId',
-            'sex.text',
-            'organism.text',
-            'breed.text',
-            'standardMet',
-            'paperPublished'
-        ],
-        'specimen': [
-            'biosampleId',
-            'material.text',
-            'cellType.text',
-            'organism.sex.text',
-            'organism.organism.text',
-            'organism.breed.text',
-            'standardMet',
-            'paperPublished',
-        ],
-        'dataset': [
-            'accession',
-            'title',
-            'species.text',
-            'archive',
-            'assayType',
-            'standardMet',
-            'paperPublished'
-        ],
-        'article': [
-            'title',
-            'year',
-            'datasetSource',
-            'journal'
-        ],
-        'analysis': [
-            'accession',
-            'datasetAccession',
-            'title',
-            'organism.text',
-            'assayType',
-            'analysisType',
-            'standardMet'
-        ],
-        'experiment': [
-            'accession',
-            'assayType',
-            'experimentTarget',
-            'standardMet'
-        ],
-        'protocol_files': [
-            'name',
-            'experimentTarget',
-            'assayType',
-        ],
-        'protocol_samples': [
-            'protocolName',
-            'key',
-            'universityName',
-            'protocolDate'
-        ],
-        'protocol_analysis': [
-            'analysisType',
-            'protocolName',
-            'key',
-            'universityName',
-            'protocolDate'
-        ]
-    }
+    'file': [
+        'filename',
+        'study.accession',
+        'experiment.accession',
+        'species.text',
+        'experiment.assayType',
+        'experiment.target',
+        'specimen',
+        'run.instrument',
+        'experiment.standardMet',
+        'paperPublished'
+    ],
+    'organism': [
+        'biosampleId',
+        'sex.text',
+        'organism.text',
+        'breed.text',
+        'standardMet',
+        'paperPublished'
+    ],
+    'specimen': [
+        'biosampleId',
+        'material.text',
+        'cellType.text',
+        'organism.sex.text',
+        'organism.organism.text',
+        'organism.breed.text',
+        'standardMet',
+        'paperPublished',
+    ],
+    'dataset': [
+        'accession',
+        'title',
+        'species.text',
+        'archive',
+        'assayType',
+        'standardMet',
+        'paperPublished'
+    ],
+    'article': [
+        'title',
+        'year',
+        'datasetSource',
+        'journal'
+    ],
+    'analysis': [
+        'accession',
+        'datasetAccession',
+        'title',
+        'organism.text',
+        'assayType',
+        'analysisType',
+        'standardMet'
+    ],
+    'experiment': [
+        'accession',
+        'assayType',
+        'experimentTarget',
+        'standardMet'
+    ],
+    'protocol_files': [
+        'name',
+        'experimentTarget',
+        'assayType',
+    ],
+    'protocol_samples': [
+        'protocolName',
+        'key',
+        'universityName',
+        'protocolDate'
+    ],
+    'protocol_analysis': [
+        'analysisType',
+        'protocolName',
+        'key',
+        'universityName',
+        'protocolDate'
+    ]
+}
 
 
 def generate_request_body(filters, aggs):
@@ -181,6 +183,11 @@ def flatten_json(y):
     return out
 
 
+def update_record(record, accession):
+    updated_rec = {**record, **{'study': accession}}
+    return updated_rec
+
+
 def delete_extra_fields(record, fields):
     updated_record = {}
     for prop in record.keys():
@@ -189,9 +196,17 @@ def delete_extra_fields(record, fields):
     return updated_record
 
 
-def generate_delimited_file(records, columns, delim, file_ext):
+def generate_delimited_file(records, columns, file_format):
     records = list(map(lambda rec: delete_extra_fields(rec, columns), records))
     headers = {}
+
+    allowed_formats = {
+        'csv': ',',
+        'tsv': '\t'
+    }
+    delim = allowed_formats[file_format] if file_format in allowed_formats else allowed_formats['csv']
+    file_ext = file_format if file_format in allowed_formats else 'csv'
+
     for col in columns:
         column = col.split('.')
         if 'text' in column:
@@ -203,13 +218,14 @@ def generate_delimited_file(records, columns, delim, file_ext):
         dict_writer = csv.DictWriter(f, fieldnames=columns, delimiter=delim)
         dict_writer.writerow(headers)
         dict_writer.writerows(records)
+    return FileResponse(f'data.{file_ext}', media_type=f'text/{file_ext}', filename=f'data.{file_ext}')
 
 
 def perform_join(records1, records2, indices):
     # sample values
     spec = {
-        'file-specimen': ['specimen','biosampleId'],
-        'specimen-file': ['biosampleId','specimen']
+        'file-specimen': ['specimen', 'biosampleId'],
+        'specimen-file': ['biosampleId', 'specimen']
     }
     if indices in spec:
         combined_records = []
@@ -231,3 +247,19 @@ def process(record):
     if rec['index'] == 'file':
         rec['filename'] = record['_id']
     return rec
+
+
+def es_fetch_records(indices, source_fields, sort, query_param, filters, aggregates, es):
+    count = 0
+    recordset = []
+
+    while True:
+        res = es.search(index=indices, _source=source_fields, size=50000, from_=count,
+                        sort=sort, q=query_param, track_total_hits=True,
+                        body=generate_request_body(filters, aggregates))
+        count += 50000
+        records = list(map(lambda rec: process(rec), res['hits']['hits']))
+        recordset += records
+        if count > res['hits']['total']['value']:
+            break
+    return recordset
