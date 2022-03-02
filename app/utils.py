@@ -209,6 +209,7 @@ def generate_delimited_file(records, columns, file_format):
 
     for col in columns:
         column = col.split('.')
+        del column[0]
         if 'text' in column:
             column.remove('text')
         column = ' '.join(column)
@@ -263,3 +264,22 @@ def es_fetch_records(indices, source_fields, sort, query_param, filters, aggrega
         if count > res['hits']['total']['value']:
             break
     return recordset
+
+
+def get_organism_biosampleId(record, es):
+    if 'specimen.material.text' in record and record['specimen.material.text'] == 'pool of specimens':
+        if 'specimen.derivedFrom' in record:
+            derivedFrom_list = [x.strip() for x in record['specimen.derivedFrom'].split(',')]
+            organism_biosampleId = list(map(lambda specimen_id: specimen_organism_biosampleId(specimen_id, es), derivedFrom_list))
+            record['specimen.organism.biosampleId'] = list(set(organism_biosampleId))
+    return record
+
+
+def specimen_organism_biosampleId(specimen_id, es):
+    specimen_data = es.search(index=['specimen'], _source='biosampleId,material.text,organism.biosampleId',
+                              size=1, from_=0, q=f"biosampleId:{specimen_id}", track_total_hits=True)
+
+    source_data = specimen_data['hits']['hits'][0]['_source']
+    if source_data['material']['text'] == 'specimen from organism':
+        return source_data['organism']['biosampleId']
+

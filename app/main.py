@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Text
 from elasticsearch import Elasticsearch, RequestsHttpConnection, exceptions
 from decouple import config
-from app.utils import generate_request_body, Index, \
-    parse_fields, generate_delimited_file, flatten_json, \
-    perform_join, update_record, es_fetch_records, process, DEFAULT_COLUMNS
+from app.utils import generate_request_body, Index,\
+    parse_fields, generate_delimited_file, flatten_json,\
+    perform_join, update_record, es_fetch_records, process,\
+    get_organism_biosampleId, DEFAULT_COLUMNS
 import json
 from fastapi.responses import FileResponse
 import os
@@ -28,7 +29,7 @@ ES_USER = config('ES_USER')
 ES_PASSWORD = config('ES_PASSWORD')
 es = Elasticsearch([NODE], connection_class=RequestsHttpConnection,
                    http_auth=(ES_USER, ES_PASSWORD), use_ssl=True, verify_certs=False)
-
+file_specimen_index = 'file-specimen-v1'
 
 @app.get("/search")
 def search_mulitple_indices(
@@ -70,12 +71,12 @@ def fetch_all_records(
     _source: Optional[str] = Query(None,
                                    description='Provide comma-separated fields to fetch. \
             For example, organism.text,sex.text'),
-    size: Optional[int] = 10, \
-    from_: Optional[int] = 0, \
+    size: Optional[int] = 10,
+    from_: Optional[int] = 0,
     sort: Optional[str] = Query(None,
                                 description='Provide fields to sort by, in the format: \
             field1:<asc|desc>,field2:<asc|desc>. For example, \
-                organism.text:asc,sex.text:desc'), \
+                organism.text:asc,sex.text:desc'),
     filters: Optional[List[str]] = Query([], regex=".+=(.+,?)+",
                                          description='Each filter condition should have the format: \
             field_name=value1,value2. For example, \
@@ -107,10 +108,11 @@ def fetch_all_records(
     # indices = index1 + '-' + index2
     # data = perform_join(tables[index1], tables[index2], indices)
     # count = len(data)
-    indices = index1 + '-' + index2
+    # indices = index1 + '-' + index2 + '-v1'
+    indices = 'file-specimen-v1'
     try:
-        data = es.search(index=indices, _source=_source, \
-                         size=size, from_=from_, sort=sort, q=q, track_total_hits=True, \
+        data = es.search(index=indices, _source=_source,
+                         size=size, from_=from_, sort=sort, q=q, track_total_hits=True,
                          body=generate_request_body(filters, aggs))
         count = data['hits']['total']['value']
         records = list(map(lambda rec: process(rec), data['hits']['hits']))
@@ -159,33 +161,21 @@ def download_delimited_file(
                 organisms=organism.text'),
     file_format: Optional[str] = Query(None),
     q: Optional[str] = None):
-    # data = []
-    # count = 0
 
     recordset = es_fetch_records(indices=indices,
-                               source_fields=_source,
-                               sort=sort,
-                               query_param=q,
-                               filters=filters,
-                               aggregates=aggs,
-                               es=es)
+                                 source_fields=_source,
+                                 sort=sort,
+                                 query_param=q,
+                                 filters=filters,
+                                 aggregates=aggs,
+                                 es=es)
 
     records = list(map(lambda rec: flatten_json(rec), recordset))
-    # while True:
-    #     res = es.search(index=indices, _source=_source,
-    #                     size=50000, from_=count, sort=sort, q=q, track_total_hits=True,
-    #                     body=generate_request_body(filters, aggs))
-    #     count += 50000
-    #     records = list(map(lambda rec: process(rec), res['hits']['hits']))
-    #     data += records
-    #     if count > res['hits']['total']['value']:
-    #         break
-    # records = list(map(lambda rec: flatten_json(rec), data))
     return generate_delimited_file(records, _source.split(','), file_format)
 
 
 @app.get("/downloadDatasetFiles")
-def download_delimited_file_koosum(
+def download_dataset_file(
     indices: List[Index] = Query(None),
     _source: Optional[str] = Query(None,
                                    description='Provide comma-separated fields to fetch. \
@@ -212,37 +202,24 @@ def download_delimited_file_koosum(
         print(dataset_data['hits']['total']['value'])
         dataset_record = list(map(lambda rec: process(rec), dataset_data['hits']['hits']))
         dataset_record = list(map(lambda rec: flatten_json(rec), dataset_record))
-        print(dataset_record)
 
         file_id_arr = dataset_record[0]['file.fileId'].split(",\n")
         file_id_string = ','.join(file_id_arr)
-        # print(file_id_string)
-        # print(_source)
-        # return {
-        #         'data': dataset_record
-        #     }
+        source_fields_list = [x.strip() for x in _source.split(',')]
+        source_fields_str = ','.join(source_fields_list) + ',specimen.material.text,specimen.derivedFrom'
 
-        # count = 0
-        # dataset_records = []
-        source_fields = [x.strip() for x in _source.split(',')]
+        recordset = es_fetch_records(indices=[file_specimen_index],
+                                     source_fields=source_fields_str,
+                                     sort=sort,
+                                     query_param=f"file.filename:{file_id_string}",
+                                     filters=filters,
+                                     aggregates=aggs,
+                                     es=es)
 
-        # download_delimited_file(indices=['file-specimen-v1'],
-        #                         source_fields=','.join(source_fields),
-        #                         q=f"file.filename:{file_id_string}")
-
-        recordset = es_fetch_records(indices=['file-specimen-v1'],
-                                   source_fields=','.join(source_fields),
-                                   sort=sort,
-                                   query_param=f"file.filename:{file_id_string}",
-                                   filters=filters,
-                                   aggregates=aggs,
-                                   es=es)
-        records = list(map(lambda rec: flatten_json(rec), recordset))
+        records = list(map(lambda rec: get_organism_biosampleId(rec, es), recordset))
+        records = list(map(lambda rec: flatten_json(rec), records))
         records = list(map(lambda rec: update_record(rec, accession), records))
+        return generate_delimited_file(records, source_fields_list, file_format)
 
-        print(source_fields)
-        return {
-                'data': records,
-                'count': len(records)
-            }
-        return generate_delimited_file(records, _source.split(','), file_format)
+
+
