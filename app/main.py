@@ -1,3 +1,4 @@
+import math
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Text
@@ -204,22 +205,30 @@ def download_dataset_file(
         dataset_record = list(map(lambda rec: flatten_json(rec), dataset_record))
 
         file_id_arr = dataset_record[0]['file.fileId'].split(",\n")
-        file_id_string = ','.join(file_id_arr)
-        source_fields_list = [x.strip() for x in _source.split(',')]
-        source_fields_str = ','.join(source_fields_list) + ',specimen.material.text,specimen.derivedFrom'
 
-        recordset = es_fetch_records(indices=[file_specimen_index],
-                                     source_fields=source_fields_str,
-                                     sort=sort,
-                                     query_param=f"file.filename:{file_id_string}",
-                                     filters=filters,
-                                     aggregates=aggs,
-                                     es=es)
+        start_from = 0
+        every_nth = 200
+        run_times = math.ceil((len(file_id_arr))/every_nth)
+        complete_recordset = []
+        for i in range(run_times):
+            file_id_subarr = file_id_arr[start_from:every_nth]
+            file_id_string = ','.join(file_id_subarr)
 
-        records = list(map(lambda rec: get_organism_biosampleId(rec, es), recordset))
-        records = list(map(lambda rec: flatten_json(rec), records))
-        records = list(map(lambda rec: update_record(rec, accession), records))
-        return generate_delimited_file(records, source_fields_list, file_format)
+            source_fields_list = [x.strip() for x in _source.split(',')]
+            source_fields_str = ','.join(source_fields_list) + ',specimen.material.text,specimen.derivedFrom'
 
+            recordset = es_fetch_records(indices=[file_specimen_index],
+                                         source_fields=source_fields_str,
+                                         sort=sort,
+                                         query_param=f"file.filename:{file_id_string}",
+                                         filters=filters,
+                                         aggregates=aggs,
+                                         es=es)
+            records = list(map(lambda rec: get_organism_biosampleId(rec, es), recordset))
+            records = list(map(lambda rec: flatten_json(rec), records))
+            records = list(map(lambda rec: update_record(rec, accession), records))
+            complete_recordset += records
+            start_from = every_nth
+            every_nth = every_nth + 200
 
-
+        return generate_delimited_file(complete_recordset, source_fields_list, file_format)
