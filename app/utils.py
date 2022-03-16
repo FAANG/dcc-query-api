@@ -209,7 +209,8 @@ def generate_delimited_file(records, columns, file_format):
 
     for col in columns:
         column = col.split('.')
-        del column[0]
+        if len(column) > 1:
+            del column[0]
         if 'text' in column:
             column.remove('text')
         column = ' '.join(column)
