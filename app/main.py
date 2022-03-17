@@ -30,7 +30,6 @@ ES_USER = config('ES_USER')
 ES_PASSWORD = config('ES_PASSWORD')
 es = Elasticsearch([NODE], connection_class=RequestsHttpConnection,
                    http_auth=(ES_USER, ES_PASSWORD), use_ssl=True, verify_certs=False)
-file_specimen_index = 'file-specimen-v1'
 
 @app.get("/search")
 def search_mulitple_indices(
@@ -109,8 +108,7 @@ def fetch_all_records(
     # indices = index1 + '-' + index2
     # data = perform_join(tables[index1], tables[index2], indices)
     # count = len(data)
-    # indices = index1 + '-' + index2 + '-v1'
-    indices = 'file-specimen-v1'
+    indices = index1 + '-' + index2
     try:
         data = es.search(index=indices, _source=_source,
                          size=size, from_=from_, sort=sort, q=q, track_total_hits=True,
@@ -200,7 +198,6 @@ def download_dataset_file(
                              body=generate_request_body(filters, aggs))
 
     if int(dataset_data['hits']['total']['value']) > 0:
-        print(dataset_data['hits']['total']['value'])
         dataset_record = list(map(lambda rec: process(rec), dataset_data['hits']['hits']))
         dataset_record = list(map(lambda rec: flatten_json(rec), dataset_record))
 
@@ -217,7 +214,7 @@ def download_dataset_file(
             source_fields_list = [x.strip() for x in _source.split(',')]
             source_fields_str = ','.join(source_fields_list) + ',specimen.material.text,specimen.derivedFrom'
 
-            recordset = es_fetch_records(indices=[file_specimen_index],
+            recordset = es_fetch_records(indices=['file-specimen'],
                                          source_fields=source_fields_str,
                                          sort=sort,
                                          query_param=f"file.filename:{file_id_string}",

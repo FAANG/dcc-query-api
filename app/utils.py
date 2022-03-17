@@ -16,7 +16,6 @@ class Index(str, Enum):
     protocol_samples = "protocol_samples"
     protocol_analysis = "protocol_analysis"
     file_specimen = "file-specimen"
-    file_specimen_v1 = "file-specimen-v1"
     dataset_specimen = "dataset-specimen"
 
 
