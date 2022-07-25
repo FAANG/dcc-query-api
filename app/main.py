@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 import os
 
 app = FastAPI()
-origins = ["*"]
+origins = ["https://data.faang.org"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,10 +24,10 @@ app.add_middleware(
 )
 
 NODE = config('NODE')
-# ES_USER = os.getenv('ES_USER')
-ES_USER = config('ES_USER')
-# ES_PASSWORD = os.getenv('ES_PASSWORD')
-ES_PASSWORD = config('ES_PASSWORD')
+ES_USER = os.getenv('ES_USER')
+# ES_USER = config('ES_USER')
+ES_PASSWORD = os.getenv('ES_PASSWORD')
+# ES_PASSWORD = config('ES_PASSWORD')
 es = Elasticsearch([NODE], connection_class=RequestsHttpConnection,
                    http_auth=(ES_USER, ES_PASSWORD), use_ssl=True, verify_certs=False)
 
